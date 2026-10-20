@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>問答｜年齡與憂鬱、焦慮、壓力的關係</title>
 <link rel="stylesheet" href="style.css">
+<style>
+.conn{margin-top:28px}
+.conn button{font:inherit;font-size:15px;padding:9px 20px;border:1.5px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;cursor:pointer}
+.conn button:disabled{opacity:.6;cursor:wait}
+.conn button:focus-visible{outline:3px solid #7aa2f7;outline-offset:2px}
+.conn .out{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:14px;white-space:pre-wrap;word-break:break-word;min-height:1em}
+.conn .out.err{border-color:#cf5440;background:#fdf1ef;color:#8a2a1c}
+.conn .out[hidden]{display:none}
+</style>
 </head>
 <body>
 <nav class="site-nav" aria-label="主要導覽">
@@ -19,6 +28,11 @@
     <span class="tag">即將推出</span>
     <p>問答功能正在準備中，敬請期待。</p>
   </div>
+
+  <div class="conn">
+    <button type="button" id="testBtn">測試連線</button>
+    <pre class="out" id="testOut" role="status" aria-live="polite" hidden></pre>
+  </div>
 </main>
 <footer class="site-foot">
   <div class="in">
@@ -27,5 +41,46 @@
   </div>
 </footer>
 
+<script>
+(function(){
+  const API_URL = "https://aged-field.c44136049.workers.dev/";
+  const btn = document.getElementById("testBtn");
+  const out = document.getElementById("testOut");
+
+  function show(text, isError){
+    out.hidden = false;
+    out.textContent = text;
+    out.classList.toggle("err", !!isError);
+  }
+
+  btn.addEventListener("click", async function(){
+    btn.disabled = true;
+    show("連線中…", false);
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "test"})
+      });
+      const raw = await res.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch (e) {}
+
+      if (!res.ok) {
+        const msg = data && data.error ? data.error : (raw || "沒有回應內容");
+        show("連線失敗（狀態碼 " + res.status + "）：" + msg, true);
+      } else if (data === null) {
+        show("連線成功，但回應不是 JSON：" + raw, true);
+      } else {
+        show(JSON.stringify(data, null, 2), false);
+      }
+    } catch (e) {
+      show("無法連線到後端：" + e.message + "\n請確認網路連線與後端網址是否正確。", true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>
