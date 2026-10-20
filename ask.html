@@ -6,14 +6,19 @@
 <title>問答｜年齡與憂鬱、焦慮、壓力的關係</title>
 <link rel="stylesheet" href="style.css">
 <style>
+.qa{margin-top:24px}
+.qa label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.qa-row{display:flex;flex-wrap:wrap;gap:8px}
+.qa input{flex:1 1 280px;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.qa input:focus-visible{outline:3px solid #7aa2f7;outline-offset:1px;border-color:var(--ink)}
 .conn{margin-top:28px}
-.conn button+button{margin-left:8px}
-.conn button{font:inherit;font-size:15px;padding:9px 20px;border:1.5px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;cursor:pointer}
-.conn button:disabled{opacity:.6;cursor:wait}
-.conn button:focus-visible{outline:3px solid #7aa2f7;outline-offset:2px}
-.conn .out{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:14px;white-space:pre-wrap;word-break:break-word;min-height:1em}
-.conn .out.err{border-color:#cf5440;background:#fdf1ef;color:#8a2a1c}
-.conn .out[hidden]{display:none}
+.qa button,.conn button{font:inherit;font-size:15px;padding:9px 20px;border:1.5px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;cursor:pointer}
+.qa button:disabled,.conn button:disabled,.qa input:disabled{opacity:.6;cursor:wait}
+.qa button:focus-visible,.conn button:focus-visible{outline:3px solid #7aa2f7;outline-offset:2px}
+.out{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:15px;white-space:pre-wrap;word-break:break-word;font-family:inherit}
+.out.err{border-color:#cf5440;background:#fdf1ef;color:#8a2a1c}
+.out[hidden]{display:none}
+.conn .out{font-size:14px}
 </style>
 </head>
 <body>
@@ -25,14 +30,18 @@
 </nav>
 <main>
   <h1 class="page-title">問答</h1>
-  <div class="soon">
-    <span class="tag">即將推出</span>
-    <p>問答功能正在準備中，敬請期待。</p>
-  </div>
+
+  <form class="qa" id="qaForm">
+    <label for="qInput">請輸入關於研究結果的問題</label>
+    <div class="qa-row">
+      <input id="qInput" type="text" maxlength="500" autocomplete="off" placeholder="例如：20–29 歲組的焦慮平均數是多少？" required>
+      <button type="submit" id="qBtn">送出</button>
+    </div>
+  </form>
+  <div class="out" id="qaOut" role="status" aria-live="polite" hidden></div>
 
   <div class="conn">
     <button type="button" id="testBtn">測試連線</button>
-    <button type="button" id="geminiBtn">測試 Gemini</button>
     <pre class="out" id="testOut" role="status" aria-live="polite" hidden></pre>
   </div>
 </main>
@@ -46,21 +55,9 @@
 <script>
 (function(){
   const API_URL = "https://aged-field.c44136049.workers.dev/";
-  const testBtn = document.getElementById("testBtn");
-  const geminiBtn = document.getElementById("geminiBtn");
-  const out = document.getElementById("testOut");
 
-  function show(text, isError){
-    out.hidden = false;
-    out.textContent = text;
-    out.classList.toggle("err", !!isError);
-  }
-
-  // 送出 POST JSON 給後端；成功時把回應資料交給 onOk 轉成要顯示的文字
-  async function callApi(payload, onOk){
-    testBtn.disabled = true;
-    geminiBtn.disabled = true;
-    show("連線中…", false);
+  // 送出 POST JSON 給後端，回傳 {ok, status, data, error}，不會丟出例外
+  async function callApi(payload){
     try {
       const res = await fetch(API_URL, {
         method: "POST",
@@ -70,34 +67,55 @@
       const raw = await res.text();
       let data = null;
       try { data = JSON.parse(raw); } catch (e) {}
-
       if (!res.ok) {
         const msg = data && data.error ? data.error : (raw || "沒有回應內容");
-        show("連線失敗（狀態碼 " + res.status + "）：" + msg, true);
-      } else if (data === null) {
-        show("連線成功，但回應不是 JSON：" + raw, true);
-      } else {
-        onOk(data);
+        return {ok: false, error: "連線失敗（狀態碼 " + res.status + "）：" + msg};
       }
+      if (data === null) return {ok: false, error: "連線成功，但回應不是 JSON：" + raw};
+      return {ok: true, data: data};
     } catch (e) {
-      show("無法連線到後端：" + e.message + "\n請確認網路連線與後端網址是否正確。", true);
-    } finally {
-      testBtn.disabled = false;
-      geminiBtn.disabled = false;
+      return {ok: false, error: "無法連線到後端：" + e.message + "\n請確認網路連線與後端網址是否正確。"};
     }
   }
 
-  testBtn.addEventListener("click", function(){
-    callApi({action: "test"}, function(data){
-      show(JSON.stringify(data, null, 2), false);
-    });
+  function show(el, text, isError){
+    el.hidden = false;
+    el.textContent = text;
+    el.classList.toggle("err", !!isError);
+  }
+
+  // ---- 問答 ----
+  const form = document.getElementById("qaForm");
+  const input = document.getElementById("qInput");
+  const qBtn = document.getElementById("qBtn");
+  const qaOut = document.getElementById("qaOut");
+
+  form.addEventListener("submit", async function(e){
+    e.preventDefault();
+    const question = input.value.trim();
+    if (!question) return;
+    input.disabled = true;
+    qBtn.disabled = true;
+    show(qaOut, "回答中…", false);
+    const r = await callApi({action: "ask", question: question});
+    if (!r.ok) show(qaOut, r.error, true);
+    else if (typeof r.data.answer === "string" && r.data.answer) show(qaOut, r.data.answer, false);
+    else show(qaOut, "後端回應中沒有回答內容。", true);
+    input.disabled = false;
+    qBtn.disabled = false;
+    input.focus();
   });
 
-  geminiBtn.addEventListener("click", function(){
-    callApi({action: "ask", question: "請用一句話自我介紹"}, function(data){
-      if (typeof data.answer === "string" && data.answer) show(data.answer, false);
-      else show("後端回應中沒有 Gemini 的回覆文字：" + JSON.stringify(data), true);
-    });
+  // ---- 測試連線 ----
+  const testBtn = document.getElementById("testBtn");
+  const testOut = document.getElementById("testOut");
+  testBtn.addEventListener("click", async function(){
+    testBtn.disabled = true;
+    show(testOut, "連線中…", false);
+    const r = await callApi({action: "test"});
+    if (r.ok) show(testOut, JSON.stringify(r.data, null, 2), false);
+    else show(testOut, r.error, true);
+    testBtn.disabled = false;
   });
 })();
 </script>
