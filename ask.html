@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <style>
 .conn{margin-top:28px}
+.conn button+button{margin-left:8px}
 .conn button{font:inherit;font-size:15px;padding:9px 20px;border:1.5px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;cursor:pointer}
 .conn button:disabled{opacity:.6;cursor:wait}
 .conn button:focus-visible{outline:3px solid #7aa2f7;outline-offset:2px}
@@ -31,6 +32,7 @@
 
   <div class="conn">
     <button type="button" id="testBtn">測試連線</button>
+    <button type="button" id="geminiBtn">測試 Gemini</button>
     <pre class="out" id="testOut" role="status" aria-live="polite" hidden></pre>
   </div>
 </main>
@@ -44,7 +46,8 @@
 <script>
 (function(){
   const API_URL = "https://aged-field.c44136049.workers.dev/";
-  const btn = document.getElementById("testBtn");
+  const testBtn = document.getElementById("testBtn");
+  const geminiBtn = document.getElementById("geminiBtn");
   const out = document.getElementById("testOut");
 
   function show(text, isError){
@@ -53,14 +56,16 @@
     out.classList.toggle("err", !!isError);
   }
 
-  btn.addEventListener("click", async function(){
-    btn.disabled = true;
+  // 送出 POST JSON 給後端；成功時把回應資料交給 onOk 轉成要顯示的文字
+  async function callApi(payload, onOk){
+    testBtn.disabled = true;
+    geminiBtn.disabled = true;
     show("連線中…", false);
     try {
       const res = await fetch(API_URL, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "test"})
+        body: JSON.stringify(payload)
       });
       const raw = await res.text();
       let data = null;
@@ -72,13 +77,27 @@
       } else if (data === null) {
         show("連線成功，但回應不是 JSON：" + raw, true);
       } else {
-        show(JSON.stringify(data, null, 2), false);
+        onOk(data);
       }
     } catch (e) {
       show("無法連線到後端：" + e.message + "\n請確認網路連線與後端網址是否正確。", true);
     } finally {
-      btn.disabled = false;
+      testBtn.disabled = false;
+      geminiBtn.disabled = false;
     }
+  }
+
+  testBtn.addEventListener("click", function(){
+    callApi({action: "test"}, function(data){
+      show(JSON.stringify(data, null, 2), false);
+    });
+  });
+
+  geminiBtn.addEventListener("click", function(){
+    callApi({action: "ask", question: "請用一句話自我介紹"}, function(data){
+      if (typeof data.answer === "string" && data.answer) show(data.answer, false);
+      else show("後端回應中沒有 Gemini 的回覆文字：" + JSON.stringify(data), true);
+    });
   });
 })();
 </script>
